@@ -3,6 +3,7 @@ clc;clear;close all;
 %preprocessing
 %https://blog.csdn.net/u013921430/article/details/79283305
 % https://ww2.mathworks.cn/matlabcentral/fileexchange/35548-3d-cone-beam-ct-cbct-projection-backprojection-fdk-iterative-reconstruction-matlab-examples
+% not already done, still bugs
 % --------------------------------------------------
 % ground truth
 % gt_path = "Project 5 OPT Recon Data\ground_truth.tif";
