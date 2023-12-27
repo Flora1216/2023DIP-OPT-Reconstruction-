@@ -1,0 +1,199 @@
+clc;clear;close all;
+%原文章代码 https://github.com/ARDISDataset/DSPOPT/blob/master/DSPOPT_Installer/MyAppInstaller_web.exe
+%preprocessing
+%https://blog.csdn.net/u013921430/article/details/79283305
+% https://ww2.mathworks.cn/matlabcentral/fileexchange/35548-3d-cone-beam-ct-cbct-projection-backprojection-fdk-iterative-reconstruction-matlab-examples
+% --------------------------------------------------
+% ground truth
+% gt_path = "Project 5 OPT Recon Data\ground_truth.tif";
+% gt_structure = imfinfo(gt_path);
+% 
+% %%获取gt图片z向维度数 
+% gt_Slice=size(gt_structure,1);                                            
+% gt_Width=gt_structure.Width;
+% gt_Height=gt_structure.Height;
+% 
+% %%一层一层的读入图像 (1024*1024*781)
+% gt_Image=zeros(gt_Height,gt_Width,gt_Slice);
+% for i=1:gt_Slice
+%     gt_Image(:,:,i)=imread(gt_path,i);                                 
+% end
+
+% gt_example = uint8(rescale(gt_Image(:,:,1))*255);
+% figure,imshow(gt_example);
+
+% --------------------------------------------------
+% raw data
+rd_path = "Project 5 OPT Recon Data\raw_data.tif";
+rd_structure = imfinfo(rd_path);
+
+%%获取rd图片z向维度数 
+rd_Slice=size(rd_structure,1);                                            
+rd_Width=rd_structure.Width;
+rd_Height=rd_structure.Height;
+
+rd_Slice1 = 2;
+%%一层一层的读入图像 (1024*1024*801)
+rd_Image=zeros(rd_Height,rd_Width,rd_Slice1);
+for i=1:rd_Slice1
+    rd_Image(:,:,i)=imread(rd_path,i);                                 
+end
+R = rd_Image;
+
+% % 设置快速傅里叶变换的宽度
+% width = 2^nextpow2(size(R,1));  
+% 
+% %% 对投影做快速傅里叶变换并滤波
+% %傅立叶变换
+% proj_fft = fft(R, width);
+% 
+% % filter 滤波
+% % R-L是一种基础的滤波算法
+% filter = 2*[0:(width/2-1), width/2:-1:1]'/width;
+% 
+% % 滤波后结果 proj_filtered
+% proj_filtered = zeros(width,180);
+% for i = 1:180
+%     proj_filtered(:,i) = proj_fft(:,i).*filter;
+% end
+% figure
+% % subplot(1,2,1),imshow(proj_fft),title('傅立叶变换')
+% % subplot(1,2,2),imshow(proj_filtered),title('傅立叶变换+滤波')
+% 
+% %% 逆快速傅里叶变换并反投影
+% % 逆快速傅里叶变换 proj_ifft
+% proj_ifft = real(ifft(proj_filtered)); 
+% figure,imshow(proj_ifft),title('逆傅立叶变换')
+
+%反投影到x轴，y轴
+% ii2=iradon(R,0:179,'linear','none');
+% imshow(ii2,[]);
+fbp = zeros(rd_Width,rd_Width,rd_Height); % 假设初值为0
+for i = 1:rd_Slice    
+    fbp = fbp + backprojection(R(:,:,i),param,i);
+end
+% for i = 1:180
+%     rad = deg2rad(i);%弧度， %这个rad 是投影角，不是投影线与x轴夹角，他们之间相差 pi/2
+%     for x = 1:rd_Height
+%         for y = 1:rd_Width
+%             %{
+%             %最近邻插值法
+%             t = round((x-M/2)*cos(rad)-(y-M/2)*sin(rad));%将每个元素舍X入到最接近的整数。
+%             if t<size(R,1)/2 && t>-size(R,1)/2
+%                 fbp(x,y)=fbp(x,y)+proj_ifft(round(t+size(R,1)/2),i);
+%             end
+%             %}
+%             t_temp = (x-rd_Height/2) * cos(rad) - (y-rd_Height/2) * sin(rad)+rd_Height/2  ;
+%              %最近邻插值法
+%             t = round(t_temp) ;
+%             if t>0 && t<=512
+%                 fbp(x,y)=fbp(x,y)+proj_ifft(t,i);
+%             end
+%         end
+%     end
+% end
+% fbp = (fbp*pi)/180;%512x512 原图像每个像素位置的密度
+
+% 显示结果
+figure,imshow(fbp),title('反投影变换后的图像')
+
+%% test dicom 
+X= dicomread('001.dcm');
+Y=(imshow(X,[]));
+
+% %% parameters
+% size = 1100;
+% num_angles = 360;
+% D = 5040; %探测器到坐标原点距离
+% %% picture read  文件目录转到图片
+% A=zeros(1100,1100,360);  %1100*1100,360层
+% for i=1:360
+%     temp = dicomread(strcat(num2str(i,'%03d'),'.dcm'));
+%     A(:,:,i)=temp;
+% end
+% 
+% %%  convolution  文件目录转到程序
+% %step1
+% for i=1:size
+%     for j = 1:size
+%         A(i,j,:)= A(i,j,:)*D/(D^2+(j-size/2)^2+(size/2-i)^2);
+%     end
+% end
+%step2 每一行数据 卷积
+data_filter = zeros(rd_Height,rd_Width,rd_Slice); % 卷积后数据
+filter = [0:(size/2-1), size/2:-1:1]/size;%ramp
+filter_rep = repmat(filter,size,1);
+for i=1:num_angles
+    row_fft = fft(A(:,:,i),[],2);
+    data_filter(:,:,i)=row_fft.*filter_rep;
+    data_filter(:,:,i) = real(ifft(data_filter(:,:,i),[],2));
+end
+
+%% step3 backprojection
+for z = -3:1:3   %-size/2:1:size/2 完整重建
+    center = zeros(size); % 初值为0 
+    for x = 1:size
+        for y = 1:size
+            r = ((x-size/2)^2+(y-size/2)^2)^0.5;
+            phi = atan2(y-size/2,x-size/2);
+            for k = 1:num_angles
+                beta = k*pi/180;
+                temp1 = D*r*cos(beta-phi)/(D+r*sin(beta-phi));
+                temp2 = (D*z)/(D+r*sin(beta-phi));
+                scale = D^2/(2*(D+r*sin(beta-phi))^2);
+                if(-550<temp1&&temp1<549&&-550<temp2&&temp2<549)
+                    center(x,y)=center(x,y)+data_filter(round(temp2+size/2+1),round(temp1+size/2+1),k)*scale;
+                end
+            end
+        end
+    end   
+    name = strcat(num2str(z+size/2,'%03d'),'.png');
+    path = strcat('./reconstruction/',name);
+    imwrite(center,path);
+end
+%imshow(center,[]);
+
+
+%% normalize
+
+function OutImg = normalize(InImg)
+    ymax=255;ymin=0;
+    xmax = max(max(InImg)); %求得InImg中的最大值
+    xmin = min(min(InImg)); %求得InImg中的最小值
+    OutImg = round((ymax-ymin)*(InImg-xmin)/(xmax-xmin) + ymin); %归一化并取整
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+% i = 1:rd_Slice1;
+% rd_result = cat(3,rd_Image(:,:,i));
+% [x y z d] = reducevolume(rd_result,[1 1 1]);
+% fv = isosurface(x,y,z,d,2);
+% p = patch(fv,'FaceColor');
+% colormap(gray);
+% view(3);
+% rd_example = uint8(rescale(rd_Image(:,:,1))*255);
+% imshow(rd_example);
+
+% for i = 1:801
+%     rd_show_{i} = uint8(rescale(rd_Image(:,:,i))*255);
+%     imwrite(rd_show_{i},'Projec 5 OPT Recon Data');
+% end
+
+% rd_theta = 1:0.45:361;
+% result = iradon(rd_Image,rd_theta);
+% imshow(result)
